@@ -201,18 +201,10 @@ class KiroAuthManager:
             # Global env var override
             final_api_region = api_region_override
             logger.info(f"API region: {final_api_region} (from KIRO_API_REGION env var)")
-        elif self._detected_api_region:
-            # Auto-detected from credentials (SQLite profile ARN or JSON region field)
-            final_api_region = self._detected_api_region
-            logger.info(f"API region: {final_api_region} (auto-detected from credentials)")
-        elif self._sso_region:
-            # Fallback to SSO region
-            final_api_region = self._sso_region
-            logger.info(f"API region: {final_api_region} (using SSO region as fallback)")
         else:
-            # Final fallback to default region
+            # Default to us-east-1 - kiro.dev API only works in this region
             final_api_region = region
-            logger.info(f"API region: {final_api_region} (using default)")
+            logger.info(f"API region: {final_api_region} (default - kiro.dev API)")
         
         # Set up URLs with correct regions:
         # - OIDC refresh: uses SSO region (for token refresh)
@@ -356,12 +348,12 @@ class KiroAuthManager:
                             logger.debug(f"Profile ARN from state table: {self._profile_arn}")
                         # ARN format: arn:aws:codewhisperer:REGION:account:profile/id
                         # Extract region from 4th component (index 3)
+                        # Note: NOT used for API host - kiro.dev only works at us-east-1
                         parts = arn.split(":")
                         if len(parts) >= 4 and parts[3]:
                             # Validate region format (e.g., us-east-1, eu-central-1)
                             if re.match(r'^[a-z]+-[a-z]+-\d+$', parts[3]):
-                                self._detected_api_region = parts[3]
-                                logger.info(f"API region auto-detected from profile ARN: {parts[3]}")
+                                logger.info(f"Profile ARN region: {parts[3]} (not used for API host)")
                             else:
                                 logger.debug(f"Invalid region format in ARN: {parts[3]}")
             except sqlite3.Error as e:
@@ -421,11 +413,10 @@ class KiroAuthManager:
             if 'profileArn' in data:
                 self._profile_arn = data['profileArn']
             if 'region' in data:
-                # Store as SSO region for OIDC token refresh
+                # Store as SSO region for OIDC token refresh only
+                # Don't use as API region - API host should stay at us-east-1
                 self._sso_region = data['region']
-                # Also use as detected API region (can be overridden by KIRO_API_REGION env var)
-                self._detected_api_region = data['region']
-                logger.debug(f"Region from JSON credentials: {data['region']}")
+                logger.debug(f"SSO region from JSON credentials: {data['region']} (used for token refresh only)")
             
             # Load clientIdHash and device registration for Enterprise Kiro IDE
             if 'clientIdHash' in data:
