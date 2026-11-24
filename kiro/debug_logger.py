@@ -34,7 +34,7 @@ them to app_logs.txt file for debugging convenience.
 
 import io
 import json
-import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 from loguru import logger
@@ -144,12 +144,16 @@ class DebugLogger:
         self._setup_app_logs_capture()
 
         if self._is_immediate_write():
-            # "all" mode - clear folder and recreate
+            # "all" mode - ensure directory exists (append to existing files)
             try:
-                if self.debug_dir.exists():
-                    shutil.rmtree(self.debug_dir)
                 self.debug_dir.mkdir(parents=True, exist_ok=True)
-                logger.debug(f"[DebugLogger] Directory {self.debug_dir} cleared for new request.")
+                # Write separator to stream files so requests are distinguishable
+                sep = f"\n--- REQUEST {datetime.now(timezone.utc).isoformat()} ---\n".encode()
+                for fname in ("response_stream_raw.txt", "response_stream_modified.txt"):
+                    fpath = self.debug_dir / fname
+                    if fpath.exists():
+                        with open(fpath, "ab") as f:
+                            f.write(sep)
             except Exception as e:
                 logger.error(f"[DebugLogger] Error preparing directory: {e}")
 
@@ -240,9 +244,9 @@ class DebugLogger:
                 "status_code": status_code,
                 "error_message": error_message
             }
-            error_file = self.debug_dir / "error_info.json"
-            with open(error_file, "w", encoding="utf-8") as f:
-                json.dump(error_info, f, indent=2, ensure_ascii=False)
+            error_file = self.debug_dir / "error_info.jsonl"
+            with open(error_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(error_info, ensure_ascii=False) + "\n")
             
             logger.debug(f"[DebugLogger] Error info saved (status={status_code})")
         except Exception as e:
@@ -279,9 +283,7 @@ class DebugLogger:
             return
         
         try:
-            # Create directory if not exists
-            if self.debug_dir.exists():
-                shutil.rmtree(self.debug_dir)
+            # Ensure directory exists
             self.debug_dir.mkdir(parents=True, exist_ok=True)
             
             # Flush buffers to files
@@ -332,30 +334,30 @@ class DebugLogger:
     # ==================== Private file writing methods ====================
     
     def _write_request_body_to_file(self, body: bytes):
-        """Writes request body to file."""
+        """Appends request body as a JSONL line."""
         try:
-            file_path = self.debug_dir / "request_body.json"
+            file_path = self.debug_dir / "request_body.jsonl"
             try:
                 json_obj = json.loads(body)
-                with open(file_path, "w", encoding="utf-8") as f:
-                    json.dump(json_obj, f, indent=2, ensure_ascii=False)
+                with open(file_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(json_obj, ensure_ascii=False) + "\n")
             except json.JSONDecodeError:
-                with open(file_path, "wb") as f:
-                    f.write(body)
+                with open(file_path, "ab") as f:
+                    f.write(body + b"\n")
         except Exception as e:
             logger.error(f"[DebugLogger] Error writing request_body: {e}")
     
     def _write_kiro_request_body_to_file(self, body: bytes):
-        """Writes Kiro request body to file."""
+        """Appends Kiro request body as a JSONL line."""
         try:
-            file_path = self.debug_dir / "kiro_request_body.json"
+            file_path = self.debug_dir / "kiro_request_body.jsonl"
             try:
                 json_obj = json.loads(body)
-                with open(file_path, "w", encoding="utf-8") as f:
-                    json.dump(json_obj, f, indent=2, ensure_ascii=False)
+                with open(file_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(json_obj, ensure_ascii=False) + "\n")
             except json.JSONDecodeError:
-                with open(file_path, "wb") as f:
-                    f.write(body)
+                with open(file_path, "ab") as f:
+                    f.write(body + b"\n")
         except Exception as e:
             logger.error(f"[DebugLogger] Error writing kiro_request_body: {e}")
     
@@ -367,7 +369,7 @@ class DebugLogger:
                 f.write(chunk)
         except Exception:
             pass
-    
+
     def _append_modified_chunk_to_file(self, chunk: bytes):
         """Appends modified chunk to file."""
         try:
@@ -390,7 +392,7 @@ class DebugLogger:
             self.debug_dir.mkdir(parents=True, exist_ok=True)
             
             file_path = self.debug_dir / "app_logs.txt"
-            with open(file_path, "w", encoding="utf-8") as f:
+            with open(file_path, "a", encoding="utf-8") as f:
                 f.write(logs_content)
             
             logger.debug(f"[DebugLogger] App logs saved to {file_path}")
