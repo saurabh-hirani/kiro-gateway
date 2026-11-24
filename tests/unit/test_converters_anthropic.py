@@ -1884,3 +1884,43 @@ class TestAnthropicToKiroIntegration:
         print(f"Checking for <max_thinking_length>6000</max_thinking_length>...")
         assert "<max_thinking_length>6000</max_thinking_length>" in content
         assert "<thinking_mode>enabled</thinking_mode>" in content
+
+
+class TestAnthropicSystemRoleInMessages:
+    """Tests for clients that send system/developer roles inside messages."""
+
+    @pytest.mark.parametrize("role", ["system", "developer"])
+    def test_message_accepts_system_like_roles(self, role):
+        """
+        What it does: Verifies AnthropicMessage accepts system/developer roles.
+        Purpose: Prevent 422 when Claude Code sends role=system in messages.
+        """
+        msg = AnthropicMessage(role=role, content="ctx")
+        assert msg.role == role
+
+    def test_message_rejects_unknown_role(self):
+        """
+        What it does: Verifies truly unknown roles are still rejected.
+        Purpose: Keep validation for malformed requests.
+        """
+        with pytest.raises(ValueError):
+            AnthropicMessage(role="bogus", content="x")
+
+    def test_system_role_reaches_kiro_payload_as_user(self):
+        """
+        What it does: Builds a Kiro payload from a request with a system-role message.
+        Purpose: Ensure the message is normalized to user and not dropped.
+        """
+        from kiro.models_anthropic import AnthropicMessagesRequest
+
+        request = AnthropicMessagesRequest(
+            model="claude-sonnet-4-5",
+            max_tokens=100,
+            messages=[
+                AnthropicMessage(role="user", content="first"),
+                AnthropicMessage(role="system", content="reminder-text"),
+                AnthropicMessage(role="user", content="question"),
+            ],
+        )
+        payload = anthropic_to_kiro(request, "conv-1", "arn:test")
+        assert "reminder-text" in str(payload)

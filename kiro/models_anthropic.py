@@ -183,11 +183,14 @@ class AnthropicMessage(BaseModel):
     Message in Anthropic format.
 
     Attributes:
-        role: Message role (user or assistant)
+        role: Message role. The official API only allows user/assistant, but
+            newer clients (e.g. Claude Code) send "system"/"developer" inside
+            messages. These are accepted and normalized to "user" by the
+            converter (normalize_message_roles in converters_core).
         content: Message content (string or list of content blocks)
     """
 
-    role: Literal["user", "assistant"]
+    role: Literal["user", "assistant", "system", "developer"]
     content: Union[str, List[ContentBlock]]
 
     model_config = {"extra": "allow"}
